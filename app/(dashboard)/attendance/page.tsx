@@ -3,6 +3,7 @@
 import { useSession } from 'next-auth/react';
 import { useState, useEffect } from 'react';
 import { FaceCamera } from '@/components/face-camera';
+
 import {
   Card,
   CardContent,
@@ -12,14 +13,10 @@ import {
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import {
-  findBestMatch,
-  float32ArrayToArray,
-  arrayToFloat32Array,
-  cosineSimilarity,
-} from '@/lib/face-recognition';
+import { findBestMatch, float32ArrayToArray } from '@/lib/face-recognition';
 import { CheckCircle2, XCircle, Clock } from 'lucide-react';
 import { format } from 'date-fns';
+import { FaceEmbedding } from '@prisma/client';
 
 interface TodayStatus {
   hasTimeIn: boolean;
@@ -33,11 +30,19 @@ export default function AttendancePage() {
   const { data: session } = useSession();
   const [status, setStatus] = useState<TodayStatus | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [faceEmbeddings, setFaceEmbeddings] = useState<FaceEmbedding[]>([]);
+  const fetchFace = async () => {
+    const res = await fetch('/api/face');
+    const data = await res.json();
+    setFaceEmbeddings(data.embeddings);
+  };
 
+  useEffect(() => {
+    fetchFace();
+  }, []);
   useEffect(() => {
     fetchStatus();
   }, []);
-
   const fetchStatus = async () => {
     try {
       const res = await fetch('/api/attendance/check');
@@ -79,43 +84,34 @@ export default function AttendancePage() {
         return;
       }
 
-      // Get stored embedding from database
-      const faceEmbeddingRes = await fetch(
-        `/api/users/${session.user.id}/face`
-      );
-      if (!faceEmbeddingRes.ok) {
-        throw new Error('Failed to fetch face embedding');
+      // Verify face match against all stored faces using findBestMatch
+      // findBestMatch uses MIN_SIMILARITY_THRESHOLD = 0.6 internally
+      if (faceEmbeddings.length === 0) {
+        toast.error('No face embeddings found in system.');
+        setIsProcessing(false);
+        return;
       }
 
-      const faceData = await faceEmbeddingRes.json();
-      if (!faceData.embeddings || !Array.isArray(faceData.embeddings)) {
-        throw new Error('Invalid face embedding data');
-      }
+      // Prepare embeddings for matching (convert to format expected by findBestMatch)
+      const storedEmbeddingsForMatch = faceEmbeddings.map((fe) => ({
+        userId: fe.userId,
+        embeddings: fe.embeddings as number[],
+      }));
 
-      // Convert stored embedding array to Float32Array
-      const storedEmbedding = arrayToFloat32Array(faceData.embeddings);
+      // Find best match across all stored faces
+      const bestMatch = findBestMatch(embedding, storedEmbeddingsForMatch);
 
-      // Calculate cosine similarity between captured and stored embeddings
-      const similarity = cosineSimilarity(embedding, storedEmbedding);
-
-      // Minimum similarity threshold (matching MIN_SIMILARITY_THRESHOLD)
-      const MIN_SIMILARITY_THRESHOLD = 0.6;
-
-      // Verify face match
-      if (similarity < MIN_SIMILARITY_THRESHOLD) {
+      // Verify that the best match is the current user and meets similarity threshold
+      if (!bestMatch || bestMatch.userId !== session.user.id) {
         toast.error(
-          `Face verification failed. Similarity: ${(similarity * 100).toFixed(
-            1
-          )}%. Minimum required: ${(MIN_SIMILARITY_THRESHOLD * 100).toFixed(
-            0
-          )}%. Please ensure you are the registered user.`
+          `Face verification failed. Please ensure you are the registered user .`
         );
         setIsProcessing(false);
         return;
       }
 
-      // Use the actual similarity score as confidenceScore
-      const confidenceScore = similarity;
+      // Use the similarity score as confidenceScore
+      const confidenceScore = bestMatch.similarity;
 
       // Mark attendance with verified similarity score
       const res = await fetch('/api/attendance', {

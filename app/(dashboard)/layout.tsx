@@ -13,7 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { LogOut, User, Calendar, Users, LayoutDashboard } from 'lucide-react';
+import { LogOut, User, Calendar, Users, LayoutDashboard, FileText } from 'lucide-react';
 import { useEffect } from 'react';
 
 export default function DashboardLayout({
@@ -88,6 +88,12 @@ export default function DashboardLayout({
                   <Button variant="ghost" size="sm">
                     <Calendar className="mr-2 h-4 w-4" />
                     All Attendance
+                  </Button>
+                </Link>
+                <Link href="/admin/reports">
+                  <Button variant="ghost" size="sm">
+                    <FileText className="mr-2 h-4 w-4" />
+                    Reports
                   </Button>
                 </Link>
               </>
