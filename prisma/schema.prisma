@@ -1,0 +1,69 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  EMPLOYEE
+}
+
+enum LogType {
+  IN
+  OUT
+}
+
+model User {
+  id            String    @id @default(cuid()) @map("_id")
+  email         String    @unique
+  name          String?
+  password      String? // null for OAuth users
+  role          Role      @default(EMPLOYEE)
+  image         String?
+  emailVerified DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  faceEmbedding FaceEmbedding?
+  attendance    Attendance[]
+  
+  @@map("users")
+}
+
+model FaceEmbedding {
+  id         String   @id @default(cuid()) @map("_id")
+  userId     String   @unique
+  embeddings Json     // Array of floats (128D vector)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("face_embeddings")
+}
+
+model Attendance {
+  id              String   @id @default(cuid()) @map("_id")
+  userId          String
+  date            DateTime
+  timeIn          DateTime?
+  timeOut         DateTime?
+  logType         LogType
+  confidenceScore Float
+  createdAt       DateTime @default(now())
+  
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId, date])
+  @@index([date])
+  @@map("attendance")
+}
+
